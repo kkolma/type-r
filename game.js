@@ -18,14 +18,14 @@ class TypingScene extends Phaser.Scene {
     }
 
     preload() {
-        // No assets to load since we use text graphics
+        // Nincsenek assetek
     }
 
     create() {
-        // Group to hold all falling words
+        // Csoport a zuhanó szavaknak
         this.words = this.add.group();
 
-        // Represent the player's ship as a text sprite
+        // A játékos űrhajója (text sprite-ként)
         this.add.text(
             this.scale.width / 2,
             this.scale.height - 50,
@@ -33,24 +33,28 @@ class TypingScene extends Phaser.Scene {
             { fontSize: '32px' }
         ).setOrigin(0.5);
 
-        // Track the current word being typed and progress
-        this.activeWord = null;
-        this.activeIndex = 0;
-
-        // Listen for keyboard input
+        // Billentyűzetfigyelés
         this.input.keyboard.on('keydown', this.handleKey, this);
 
-        // Spawn new words on a timer
+        // Szavak indítása időzítővel
         this.time.addEvent({
             delay: 2000,
             callback: this.spawnWord,
             callbackScope: this,
             loop: true
         });
+
+        // **************************************************
+        // INPUT-KEZELÉS állapotváltozók
+        // **************************************************
+        // Ha false, még nem találtad el semelyik szó első betűjét
+        this.inputStarted = false;
+        // A kiválasztott szó, amin dolgozunk
+        this.currentWord = null;
     }
 
     spawnWord() {
-        // Choose a random word and create it at a random x position
+        // Véletlenszerű szó, véletlen X pozíció
         const text = Phaser.Utils.Array.GetRandom(words);
         const x = Phaser.Math.Between(50, this.scale.width - 50);
         const speed = Phaser.Math.Between(50, 120);
@@ -61,74 +65,66 @@ class TypingScene extends Phaser.Scene {
     }
 
     handleKey(event) {
-        // Only process single character keys
-        if (event.key.length !== 1) return;
-
-        // If no word is currently being typed, look for a word whose first character matches
-        if (!this.activeWord) {
-            let found = null;
-            this.words.getChildren().forEach(word => {
-                if (!found && word.text[0] && word.text[0].toLowerCase() === event.key.toLowerCase()) {
-                    found = word;
+        // Ha még nem kezdtél bele (nem találtad el az első betűt):
+        if (!this.inputStarted) {
+            // csak egykarakteres billentyűkre reagálunk
+            if (event.key.length === 1) {
+                // keresünk olyan szót, amelynek az első karaktere egyezik
+                let found = null;
+                this.words.getChildren().forEach(word => {
+                    if (!found && word.text.charAt(0).toLowerCase() === event.key.toLowerCase()) {
+                        found = word;
+                    }
+                });
+                if (found) {
+                    // eltaláltad az első betűt
+                    this.inputStarted = true;
+                    this.currentWord = found;
+                    // eltüntetjük a szó első karakterét
+                    const newText = found.text.substring(1);
+                    found.setText(newText);
+                    // ha így üres marad, megsemmisítjük rögtön
+                    if (newText.length === 0) {
+                        found.destroy();
+                        this.inputStarted = false;
+                        this.currentWord = null;
+                    }
                 }
-            });
-            if (found) {
-                this.activeWord = found;
-                this.activeIndex = 1;
-                this.flashChar(found, 0);
             }
-        } else {
-            // Continue typing the active word
-            const word = this.activeWord;
-            const idx = this.activeIndex;
-            if (word.text[idx] && word.text[idx].toLowerCase() === event.key.toLowerCase()) {
-                this.flashChar(word, idx);
-                this.activeIndex++;
-                if (this.activeIndex >= word.text.length) {
-                    word.destroy();
-                    this.activeWord = null;
-                    this.activeIndex = 0;
+            // minden más leütést figyelmen kívül hagyunk, és nem jelenítünk meg semmit
+            return;
+        }
+
+        // Ha már egyszer eltaláltad az első betűt, csak a kiválasztott szóhoz viszonyítunk
+        if (this.currentWord && event.key.length === 1) {
+            // ha a következő betűt is eltalálod
+            if (this.currentWord.text.charAt(0).toLowerCase() === event.key.toLowerCase()) {
+                const newText = this.currentWord.text.substring(1);
+                this.currentWord.setText(newText);
+                // ha üres lett, töröljük és újracélzásra állítunk vissza
+                if (newText.length === 0) {
+                    this.currentWord.destroy();
+                    this.inputStarted = false;
+                    this.currentWord = null;
                 }
             }
         }
+        // egyéb billentyűk és Backspace itt nem csinálnak semmit
     }
 
     update(time, delta) {
-        // Move words downward and check if they've reached the bottom
+        // Szavak lefele mozgatása, ha leérnek, megsemmisülnek
         this.words.getChildren().forEach(word => {
             word.y += word.getData('speed') * delta / 1000;
             if (word.y > this.scale.height) {
-                // If the active word falls off, reset typing state
-                if (this.activeWord === word) {
-                    this.activeWord = null;
-                    this.activeIndex = 0;
-                }
                 word.destroy();
-                // Optional: reduce life or trigger damage here
-            }
-        });
-    }
-
-    // Flash a character at the given index in the word
-    flashChar(word, idx) {
-        // Save original text
-        const original = word.text;
-        // Build highlighted text
-        const before = original.slice(0, idx);
-        const char = original[idx];
-        const after = original.slice(idx + 1);
-        // Use Phaser's rich text for color
-        word.setText(before + '[color=yellow]' + char + '[/color]' + after);
-        // Remove highlight after a short delay
-        this.time.delayedCall(120, () => {
-            if (word.active) {
-                word.setText(original);
+                // itt lehet életet csökkenteni
             }
         });
     }
 }
 
-// Set up the Phaser game instance
+// Phaser játék indítása
 new Phaser.Game({
     type: Phaser.AUTO,
     width: 800,

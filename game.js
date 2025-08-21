@@ -45,6 +45,95 @@ class TypingScene extends Phaser.Scene {
     this.load.image('hungary', 'assets/hungary.png');
     this.load.image('clouds', 'assets/clouds.png');
     this.load.audio('bgmusic', ['assets/80s-synth-166739.mp3']);
+
+  }
+
+  // Resize handler: újrapozícionálja a főbb elemeket
+  onResize(gameSize) {
+    const width = gameSize.width;
+    const height = gameSize.height;
+
+    // Start képernyő elemek
+    if (this.gameState === 'start' && this.startScreenTexts && this.startScreenTexts.length) {
+      // Rekord szöveg
+      if (this.recordText) this.recordText.setPosition(width / 2, 30);
+
+      // Cím (NER-TYPE) betűk
+      if (this.nerTypeLetters && this.nerTypeLetters.length) {
+        const title = 'NER-TYPE';
+        const fontSize = 64;
+        const spacing = 48;
+        this.nerTypeBaseY = height / 2 - 60;
+        const titleTotalWidth = (title.length - 1) * spacing + fontSize;
+        let titleStartX = width / 2 - titleTotalWidth / 2 + fontSize / 2;
+        for (let i = 0; i < this.nerTypeLetters.length; i++) {
+          this.nerTypeLetters[i].setPosition(titleStartX + i * spacing, this.nerTypeBaseY);
+        }
+      }
+
+      // "Harc a propaganda ellen!" szöveg
+      if (this.startScreenTexts.length >= 3) {
+        const propagandaText = this.startScreenTexts.find(t => t.text === 'Harc a propaganda ellen!');
+        if (propagandaText) propagandaText.setPosition(width / 2, this.nerTypeBaseY + 60);
+      }
+
+      // "START" betűk
+      if (this.menuLetterTexts && this.menuLetterTexts.length) {
+        const letters = ['S', 'T', 'A', 'R', 'T'];
+        const lettersTotalWidth = letters.length * 48 + (letters.length - 1) * 8;
+        let lettersStartX = width / 2 - lettersTotalWidth / 2 + 24;
+        for (let i = 0; i < this.menuLetterTexts.length; i++) {
+          this.menuLetterTexts[i].setPosition(lettersStartX + i * 56, height / 2 + 80);
+        }
+      }
+
+      // "by Ko-Ko" és "Zene" kreditek
+      if (this.byKoKoText) this.byKoKoText.setPosition(width - 10, height - 10);
+      if (this.musicCreditText) this.musicCreditText.setPosition(10, height - 10);
+    }
+
+    // HUD és játék közbeni elemek
+    if (this.gameState === 'playing') {
+      // HUD háttér
+      if (this.hudBg) {
+        this.hudBg.clear();
+        this.hudBg.fillStyle(0x22232a, 0.92);
+        this.hudBg.fillRect(0, 0, width, 54);
+      }
+      // HUD szövegek
+      if (this.levelText) this.levelText.setPosition(width * 0.32, 54 / 2);
+      if (this.livesText) this.livesText.setPosition(width * 0.60, 54 / 2);
+      if (this.bonusText) this.bonusText.setPosition(width - 24, 54 / 2);
+
+      // Felhők és Hungary tileSprite
+      if (this.cloudsTile) {
+        this.cloudsTile.setPosition(0, height - this.cloudsTile.displayHeight);
+        this.cloudsTile.displayWidth = width;
+        // displayHeight marad, nem változik
+      }
+      if (this.bgTile) {
+        this.bgTile.setPosition(0, height - this.bgTile.displayHeight);
+        this.bgTile.displayWidth = width;
+        // displayHeight marad, nem változik
+      }
+      // Hajó (ship) függőleges közép
+      if (this.ship) this.ship.setPosition(20, height / 2);
+    }
+
+    // Game Over képernyő
+    if (this.gameState === 'gameover' && this.gameOverTexts && this.gameOverTexts.length) {
+      // "Játék Vége" szöveg
+      if (this.gameOverTexts[0]) this.gameOverTexts[0].setPosition(width / 2, height / 2 - 40);
+      // "T O V Á B B" betűk
+      if (this.gameOverLetterTexts && this.gameOverLetterTexts.length) {
+        const letters = ['T', 'O', 'V', 'Á', 'B', 'B'];
+        const totalWidth = letters.length * 48 + (letters.length - 1) * 8;
+        let startX = width / 2 - totalWidth / 2 + 24;
+        for (let i = 0; i < this.gameOverLetterTexts.length; i++) {
+          this.gameOverLetterTexts[i].setPosition(startX + i * 56, height / 2 + 100);
+        }
+      }
+    }
   }
 
   create() {
@@ -54,6 +143,10 @@ class TypingScene extends Phaser.Scene {
       this.bgMusic = this.sound.add('bgmusic', { loop: true, volume: 0.5 });
       this.bgMusic.play();
     }
+
+    // Prevent browser from scrolling on SPACE when game is focused
+    this.input.keyboard.addCapture(['SPACE']);
+
     this.gameState = 'start'; // 'start', 'playing', 'gameover'
     this.menuSequence = ['s', 't', 'a', 'r', 't'];
     this.menuPrompt = 'Start';
@@ -66,6 +159,9 @@ class TypingScene extends Phaser.Scene {
     this.startScreenTexts = [];
     this.gameOverTexts = [];
     this.recordText = null; // Rekord szöveg objektum
+
+    // Listen for resize events
+    this.scale.on('resize', this.onResize, this);
 
     // Background stars (always visible)
     const g = this.add.graphics();
@@ -104,7 +200,7 @@ class TypingScene extends Phaser.Scene {
       }
     );
 
-    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    this.audioCtx = null; // Will be created on first user gesture
 
     // Listen for all keydown events for state transitions
     this.input.keyboard.on('keydown', this.handleGlobalKey, this);
@@ -191,6 +287,14 @@ class TypingScene extends Phaser.Scene {
       fontStyle: 'italic'
     }).setOrigin(0, 1);
     this.startScreenTexts.push(this.musicCreditText);
+
+    // Verziószám középen legalul
+    this.versionText = this.add.text(this.scale.width / 2, this.scale.height - 10, 'v1.02', {
+      fontSize: '16px',
+      color: '#888',
+      fontStyle: 'italic'
+    }).setOrigin(0.5, 1);
+    this.startScreenTexts.push(this.versionText);
   }
 
   startGame() {
@@ -202,18 +306,25 @@ class TypingScene extends Phaser.Scene {
     // Clouds behind hungary
     this.cloudsTile = this.add.tileSprite(
       0,
-      this.scale.height - imgHeight,
+      Math.floor(this.scale.height - cloudsImg.height),
       this.scale.width,
       cloudsImg.height,
       'clouds'
     ).setOrigin(0, 0).setDepth(-20);
+    this.cloudsTile.displayHeight = cloudsImg.height;
+
     this.bgTile = this.add.tileSprite(
       0,
-      this.scale.height - imgHeight,
+      Math.floor(this.scale.height - imgHeight),
       this.scale.width,
       imgHeight,
       'hungary'
     ).setOrigin(0, 0).setDepth(-10);
+    this.bgTile.displayHeight = imgHeight;
+
+    // DEBUG: log tileSprite magasságok
+    console.log('bgTile.height:', this.bgTile.height, 'displayHeight:', this.bgTile.displayHeight, 'imgHeight:', imgHeight);
+    console.log('cloudsTile.height:', this.cloudsTile.height, 'displayHeight:', this.cloudsTile.displayHeight, 'cloudsImg.height:', cloudsImg.height);
     this.gameState = 'playing';
     this.spaceProgress = 0;
 
@@ -335,73 +446,87 @@ class TypingScene extends Phaser.Scene {
 
   // --- Global key handler for state transitions and "space" sequence ---
   handleGlobalKey(e) {
-    if (this.gameState === 'playing') return; // handled by gameplay
-    const key = e.key.toLowerCase();
-    if (key.length !== 1) return;
+      // Ensure AudioContext is created/resumed on first user gesture
+      if (!this.audioCtx) {
+          this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          console.log('AudioContext created on user gesture');
+      } else if (this.audioCtx.state === 'suspended') {
+          this.audioCtx.resume().then(() => {
+              console.log('AudioContext resumed on user gesture');
+          });
+      }
 
-    if (this.gameState === 'start') {
-      if (key === this.menuSequence[this.menuProgress]) {
-        // Fade out the corresponding letter
-        if (this.menuLetterTexts && this.menuLetterTexts[this.menuProgress]) {
-          this.tweens.add({
-            targets: this.menuLetterTexts[this.menuProgress],
-            alpha: 0.3,
-            duration: 200,
-            ease: 'Linear'
-          });
-          this._playBeep();
-        }
-        this.menuProgress++;
-        if (this.menuProgress === this.menuSequence.length) {
-          this.time.delayedCall(250, () => {
-            if (this.menuLetterTexts) this.menuLetterTexts.forEach(t => t.destroy());
-          });
-          this.startGame();
-        }
-      } else {
-        // Wrong key resets progress and restores all letters
-        if (this.menuLetterTexts) {
-          this.menuLetterTexts.forEach(t => t.setAlpha(1));
-        }
-        this.menuProgress = 0;
+      if (this.gameState === 'playing') return; // handled by gameplay
+      const key = e.key.toLowerCase();
+      if (key.length !== 1) return;
+
+      if (this.gameState === 'start') {
+          if (key === this.menuSequence[this.menuProgress]) {
+              // Fade out the corresponding letter
+              if (this.menuLetterTexts && this.menuLetterTexts[this.menuProgress]) {
+                  this.tweens.add({
+                      targets: this.menuLetterTexts[this.menuProgress],
+                      alpha: 0.3,
+                      duration: 200,
+                      ease: 'Linear'
+                  });
+                  this._playBeep();
+              }
+              this.menuProgress++;
+              if (this.menuProgress === this.menuSequence.length) {
+                  this.time.delayedCall(250, () => {
+                      if (this.menuLetterTexts) this.menuLetterTexts.forEach(t => t.destroy());
+                  });
+                  this.startGame();
+              }
+          } else {
+              // Wrong key resets progress and restores all letters
+              if (this.menuLetterTexts) {
+                  this.menuLetterTexts.forEach(t => t.setAlpha(1));
+              }
+              this.menuProgress = 0;
+          }
+      } else if (this.gameState === 'gameover') {
+          // Handle accented and uppercase letters for "Tovább"
+          let expected = this.gameOverSequence[this.gameOverProgress];
+          let actual = key;
+          // Accept both lower and uppercase, and handle 'á'
+          if (expected === 'á' && (actual === 'á' || actual === 'a')) actual = 'á';
+          if (expected === actual) {
+              if (this.gameOverLetterTexts && this.gameOverLetterTexts[this.gameOverProgress]) {
+                  this.tweens.add({
+                      targets: this.gameOverLetterTexts[this.gameOverProgress],
+                      alpha: 0.3,
+                      duration: 200,
+                      ease: 'Linear'
+                  });
+                  this._playBeep();
+              }
+              this.gameOverProgress++;
+              if (this.gameOverProgress === this.gameOverSequence.length) {
+                  this.time.delayedCall(250, () => {
+                      if (this.gameOverLetterTexts) this.gameOverLetterTexts.forEach(t => t.destroy());
+                      if (this.gameOverTexts) this.gameOverTexts.forEach(t => t.destroy());
+                  });
+                  this.showStartScreen();
+              }
+          } else {
+              if (this.gameOverLetterTexts) {
+                  this.gameOverLetterTexts.forEach(t => t.setAlpha(1));
+              }
+              this.gameOverProgress = 0;
+          }
       }
-    } else if (this.gameState === 'gameover') {
-      // Handle accented and uppercase letters for "Tovább"
-      let expected = this.gameOverSequence[this.gameOverProgress];
-      let actual = key;
-      // Accept both lower and uppercase, and handle 'á'
-      if (expected === 'á' && (actual === 'á' || actual === 'a')) actual = 'á';
-      if (expected === actual) {
-        if (this.gameOverLetterTexts && this.gameOverLetterTexts[this.gameOverProgress]) {
-          this.tweens.add({
-            targets: this.gameOverLetterTexts[this.gameOverProgress],
-            alpha: 0.3,
-            duration: 200,
-            ease: 'Linear'
-          });
-          this._playBeep();
-        }
-        this.gameOverProgress++;
-        if (this.gameOverProgress === this.gameOverSequence.length) {
-          this.time.delayedCall(250, () => {
-            if (this.gameOverLetterTexts) this.gameOverLetterTexts.forEach(t => t.destroy());
-            if (this.gameOverTexts) this.gameOverTexts.forEach(t => t.destroy());
-          });
-          this.showStartScreen();
-        }
-      } else {
-        if (this.gameOverLetterTexts) {
-          this.gameOverLetterTexts.forEach(t => t.setAlpha(1));
-        }
-        this.gameOverProgress = 0;
-      }
-    }
   }
 
   _prepareLevelQueue() {
-    this.levelQueue = Phaser.Utils.Array.Shuffle(
-      words.filter(w => w[2] === this.level).slice()
-    );
+    let filtered = words.filter(w => w[2] === this.level);
+    if (filtered.length === 0) {
+      // Ha nincs több szó ezen a szinten, vissza az első szintre
+      this.level = 1;
+      filtered = words.filter(w => w[2] === this.level);
+    }
+    this.levelQueue = Phaser.Utils.Array.Shuffle(filtered.slice());
   }
 
   spawnWord() {
@@ -431,7 +556,8 @@ class TypingScene extends Phaser.Scene {
     const sentenceWidth = measured.reduce((s, o) => s + o.width, 0) + (measured.length - 1) * spaceWd;
 
     const startX = this.scale.width + 20;
-    const topMargin = 50, bottomMargin = 50;
+    const hudHeight = 54;
+    const topMargin = hudHeight + 10, bottomMargin = 50;
     const rows = Math.ceil(sentenceWidth / (this.scale.width - 40));
     const blockHeight = rows * lh + lh;
     const startY = Phaser.Math.Between(topMargin, this.scale.height - bottomMargin - blockHeight);
@@ -587,8 +713,14 @@ class TypingScene extends Phaser.Scene {
 
     // Scroll clouds and hungary at the bottom during gameplay
     if (this.gameState === 'playing') {
-      if (this.cloudsTile) this.cloudsTile.tilePositionX += 0.2; // slower
-      if (this.bgTile) this.bgTile.tilePositionX += 0.5; // faster, in front
+      if (this.cloudsTile) {
+        this.cloudsTile.tilePositionX += 0.2; // slower
+        this.cloudsTile.tilePositionY = 0;
+      }
+      if (this.bgTile) {
+        this.bgTile.tilePositionX += 0.5; // faster, in front
+        this.bgTile.tilePositionY = 0;
+      }
     }
   
     if (this.gameState !== 'playing') return;
@@ -641,4 +773,22 @@ class TypingScene extends Phaser.Scene {
   }
 }
 
-new Phaser.Game({ type: Phaser.AUTO, width: 800, height: 600, backgroundColor: '#000000', scene: TypingScene });
+const config = {
+  type: Phaser.AUTO,
+  width: window.innerWidth,
+  height: window.innerHeight,
+  backgroundColor: '#000000',
+  scene: TypingScene,
+  scale: {
+    mode: Phaser.Scale.RESIZE,
+    autoCenter: Phaser.Scale.CENTER_BOTH
+  }
+};
+
+const game = new Phaser.Game(config);
+
+// Handle window resize to always fill available space
+window.addEventListener('resize', () => {
+  game.scale.resize(window.innerWidth, window.innerHeight);
+});
+
